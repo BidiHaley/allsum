@@ -1,0 +1,68 @@
+# Title
+st.title("📋 Allergy Report Summarizer")
+st.write("Upload any of the 6 PDF reports to analyze allergen summaries using NLP.")
+
+# File uploader
+uploaded_file = st.file_uploader("Upload PDF Report", type="pdf")
+
+def extract_text_from_pdf(file):
+    reader = PdfReader(file)
+    text = ""
+    for page in reader.pages:
+        text += page.extract_text() + "\\n"
+    return text
+
+def preprocess(text):
+    text = text.lower()
+    tokens = word_tokenize(text)
+    tokens = [w for w in tokens if w.isalpha() and w not in stop_words]
+    doc = nlp(" ".join(tokens))
+    lemmatized = [token.lemma_ for token in doc]
+    return " ".join(lemmatized)
+
+if uploaded_file:
+    raw_text = extract_text_from_pdf(uploaded_file)
+    st.subheader("🔹 Raw Extracted Text (first 1000 chars)")
+    st.text(raw_text[:1000])
+
+    preprocessed_text = preprocess(raw_text)
+    st.subheader("🔹 Preprocessed Text")
+    st.text(preprocessed_text[:500])
+
+    st.subheader("🔹 Word Frequency WordCloud")
+    word_freq = Counter(preprocessed_text.split())
+    wordcloud = WordCloud(width=800, height=400).generate_from_frequencies(word_freq)
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.imshow(wordcloud, interpolation="bilinear")
+    ax.axis("off")
+    st.pyplot(fig)
+
+    st.subheader("🔹 Top TF-IDF Terms")
+    vectorizer = TfidfVectorizer(max_features=20)
+    X = vectorizer.fit_transform([preprocessed_text])
+    tfidf_scores = dict(zip(vectorizer.get_feature_names_out(), X.sum(axis=0).tolist()[0]))
+    st.write(tfidf_scores)
+
+    st.subheader("🔹 Named Entities")
+    doc = nlp(raw_text)
+    entities = [(ent.text, ent.label_) for ent in doc.ents]
+    st.write(entities[:10])
+
+    st.subheader("🔹 Extractive Summary (First 3 Sentences)")
+    from sumy.parsers.plaintext import PlaintextParser
+    from sumy.nlp.tokenizers import Tokenizer
+    from sumy.summarizers.text_rank import TextRankSummarizer
+
+    parser = PlaintextParser.from_string(raw_text, Tokenizer("english"))
+    summarizer = TextRankSummarizer()
+    summary = summarizer(parser.document, 3)
+    extractive = " ".join([str(s) for s in summary])
+    st.write(extractive)
+
+    st.subheader("🔹 Abstractive Summary")
+    from transformers import pipeline
+    summarizer_pipe = pipeline("summarization", model="facebook/bart-large-cnn")
+    short_text = raw_text[:1024]
+    summary_out = summarizer_pipe(short_text, max_length=130, min_length=30, do_sample=False)
+    st.write(summary_out[0]['summary_text'])
+"""
